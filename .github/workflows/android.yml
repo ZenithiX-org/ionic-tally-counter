@@ -16,43 +16,69 @@ jobs:
       - name: Checkout project
         uses: actions/checkout@v4
 
-      # 2. Install Node.js
+      # 2. Install Node.js (Angular 22 needs Node 20.19+ / 22.12+ -> use 22)
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
 
-      # 3. Install Java 21
+      # 3. Install Java 21 (required by AGP 8.13 / Gradle 8.14 / Capacitor 8)
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '21'
-          cache: gradle
 
       # 4. Install Ionic/Node dependencies
       - name: Install dependencies
-        run: npm ci
+        run: npm ci --no-audit --no-fund
 
       # 5. Build Ionic web app
+      # Use --configuration production explicitly + verify www output.
+      # `ng build` returns exit code 3 on some CI failures, so surface the log.
       - name: Build Ionic app
-        run: npm run build
+        run: |
+          npm run build -- --configuration production
+          echo "--- www contents ---"
+          ls -la www
+          test -f www/index.html || (echo "ERROR: www/index.html missing - Angular build did not produce webDir 'www'" && exit 1)
 
       # 6. Copy the web build into Android
+      # `cap sync` exits with code 3 if the android platform folder is missing
+      # (e.g. android/ not committed). Add it if needed, then sync.
       - name: Sync Capacitor Android
-        run: npx cap sync android
+        run: |
+          if [ ! -f android/gradlew ]; then
+            echo "android platform missing on runner - adding it..."
+            npx cap add android
+          fi
+          npx cap sync android
+          echo "--- android assets ---"
+          ls -la android/app/src/main/assets/public || echo "WARNING: assets/public not found after sync"
 
-      # 7. Make Gradle executable
+      # 7. Setup Android SDK (compileSdk 36 needs platform + build-tools 36)
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android platform 36
+        run: |
+          sdkmanager --install "platforms;android-36" "build-tools;36.0.0" "platform-tools"
+          sdkmanager --licenses < /dev/null || true
+          yes | sdkmanager --licenses || true
+
+      # 8. Make Gradle executable (also fix Windows CRLF line endings)
       - name: Make Gradle executable
-        run: chmod +x android/gradlew
+        run: |
+          sed -i 's/\r$//' android/gradlew
+          chmod +x android/gradlew
 
-      # 8. Build APK
+      # 9. Build APK
       - name: Build APK
         working-directory: android
-        run: ./gradlew assembleDebug
+        run: ./gradlew assembleDebug --stacktrace --info
 
-      # 9. Upload APK to GitHub
+      # 10. Upload APK to GitHub
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
