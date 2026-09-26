@@ -57,15 +57,17 @@ jobs:
           echo "--- android assets ---"
           ls -la android/app/src/main/assets/public || echo "WARNING: assets/public not found after sync"
 
-      # 7. Setup Android SDK (compileSdk 36 needs platform + build-tools 36)
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
-
+      # 7. Install Android SDK packages (runner already has SDK preinstalled -
+      # do NOT use android-actions/setup-android@v3, it fails with
+      # "Failed to find package 'tools'" / sdkmanager exit code 1)
       - name: Install Android platform 36
         run: |
-          sdkmanager --install "platforms;android-36" "build-tools;36.0.0" "platform-tools"
-          sdkmanager --licenses < /dev/null || true
+          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          ls "$ANDROID_SDK_ROOT/cmdline-tools" || true
+          export PATH="$ANDROID_SDK_ROOT/cmdline-tools/latest/bin:$PATH"
           yes | sdkmanager --licenses || true
+          sdkmanager --install "platforms;android-36" "build-tools;36.0.0"
 
       # 8. Make Gradle executable (also fix Windows CRLF line endings)
       - name: Make Gradle executable
