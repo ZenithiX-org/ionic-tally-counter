@@ -75,15 +75,23 @@ jobs:
           sed -i 's/\r$//' android/gradlew
           chmod +x android/gradlew
 
-      # 9. Build APK
-      - name: Build APK
+      # 9. Build signed release APK (requires GitHub Secrets, see below)
+      - name: Decode Keystore
+        run: echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 --decode > android/app/release.keystore
+
+      - name: Build Release APK
         working-directory: android
-        run: ./gradlew assembleDebug --stacktrace --info
+        env:
+          ANDROID_KEYSTORE_FILE: ${{ github.workspace }}/android/app/release.keystore
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: ./gradlew assembleRelease --stacktrace
 
       # 10. Upload APK to GitHub
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: ionic-demo-debug-apk
-          path: android/app/build/outputs/apk/debug/app-debug.apk
+          name: ionic-demo-release-apk
+          path: android/app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
